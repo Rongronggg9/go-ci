@@ -1,0 +1,101 @@
+pipeline {
+    agent {
+        docker {
+            image "buildpack-deps:bullseye"
+            args '-u 0:0 --network host'  // buildpack-deps has no sudo installed
+            label 'mips64el'
+            alwaysPull true
+        }
+    }
+    options {
+        skipDefaultCheckout true
+    }
+    stages {
+        stage('Declarative: Checkout SCM') {
+            steps {
+                sh 'bash -c \'GLOBIGNORE=".:.."; rm -rf *\''
+                checkout scm
+            }
+        }
+        stage('Install golang build dependencies') {
+            steps {
+                sh '''
+                    echo \
+'deb https://mirrors.bfsu.edu.cn/debian/ bullseye main contrib non-free
+deb-src https://mirrors.bfsu.edu.cn/debian/ bullseye main contrib non-free
+
+deb https://mirrors.bfsu.edu.cn/debian/ bullseye-updates main contrib non-free
+deb-src https://mirrors.bfsu.edu.cn/debian/ bullseye-updates main contrib non-free
+
+deb https://mirrors.bfsu.edu.cn/debian/ bullseye-backports main contrib non-free
+deb-src https://mirrors.bfsu.edu.cn/debian/ bullseye-backports main contrib non-free
+
+deb https://mirrors.bfsu.edu.cn/debian-security bullseye-security main contrib non-free
+deb-src https://mirrors.bfsu.edu.cn/debian-security bullseye-security main contrib non-free' \
+>/etc/apt/sources.list
+                    apt-get -yq update
+                    apt-get -yq upgrade
+                    apt-get -yq install golang -t bullseye-backports
+                '''
+            }
+        }
+        stage('Clone golang') {
+            steps {
+                sh 'git clone --recursive --depth=1 https://go.googlesource.com/go'
+            }
+        }
+//        stage('Patch golang') {
+//            steps {
+//                sh '''
+//                    curl -sL https://github.com/Rongronggg9/go/commit/1d162771ef2dfd297a50d2c3f2e0c6a720f9808e.patch \
+//                        | tee fix-mips-syscall.patch
+//                    cd go && git apply -v ../fix-mips-syscall.patch
+//                '''
+//            }
+//        }
+        stage('Build golang') {
+            steps {
+                sh '''
+                    cd go/src
+                    ./all.bash
+                    cd ../..
+                    
+                    apt-get -yq purge --auto-remove golang
+                    echo "export PATH=$(pwd)/go/bin:$PATH" > /etc/profile.d/golang.sh
+                    chmod +x /etc/profile.d/golang.sh
+                    . /etc/profile.d/golang.sh
+                    go version
+                '''
+            }
+        }
+        stage('Hello World') {
+            steps {
+                sh '''
+                    ./test_go.sh hello.go
+                '''
+            }
+        }
+        stage('Setuid') {
+            steps {
+                sh '''
+                    ./test_go.sh setuid.go
+                '''
+            }
+        }
+    }
+    post {
+        always {
+            sh 'bash -c \'GLOBIGNORE=".:.."; rm -rf *\''
+            cleanWs(
+                    cleanWhenAborted: true,
+                    cleanWhenFailure: true,
+                    cleanWhenNotBuilt: true,
+                    cleanWhenSuccess: true,
+                    cleanWhenUnstable: true,
+                    cleanupMatrixParent: true,
+                    disableDeferredWipeout: true,
+                    deleteDirs: true
+            )
+        }
+    }
+}

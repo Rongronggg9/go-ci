@@ -1,0 +1,78 @@
+From ff245d3caa9408e16e0dd0f07661a0cddcd3e494 Mon Sep 17 00:00:00 2001
+From: Rongrong <rongrong@oss.cipunited.com>
+Date: Mon, 7 Nov 2022 14:18:42 +0800
+Subject: [PATCH] syscall, runtime/internal/syscall: zero r2 before mips linux
+ syscalls
+
+All mips variant perform syscalls similarly. R2 (v0) holds r1 and R3
+(v1) holds r2 of a syscall. The latter is only used by 2-ret syscalls.
+A 1-ret syscall would not touch R3 but keeps it as is, making r2 be a
+random value. Always reset it to 0 before SYSCALL to fix the issue.
+
+Fixes #56426
+---
+ src/runtime/internal/syscall/asm_linux_mips64x.s | 1 +
+ src/runtime/internal/syscall/asm_linux_mipsx.s   | 1 +
+ src/syscall/asm_linux_mips64x.s                  | 5 +++--
+ src/syscall/asm_linux_mipsx.s                    | 2 ++
+ 4 files changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/src/runtime/internal/syscall/asm_linux_mips64x.s b/src/runtime/internal/syscall/asm_linux_mips64x.s
+index 0e88a2d8acd37..6b7c524689579 100644
+--- a/src/runtime/internal/syscall/asm_linux_mips64x.s
++++ b/src/runtime/internal/syscall/asm_linux_mips64x.s
+@@ -15,6 +15,7 @@ TEXT ·Syscall6(SB),NOSPLIT,$0-80
+ 	MOVV	a4+32(FP), R7
+ 	MOVV	a5+40(FP), R8
+ 	MOVV	a6+48(FP), R9
++	MOVV	R0, R3	// reset R3 to 0 as 1-ret SYSCALL keeps it
+ 	SYSCALL
+ 	BEQ	R7, ok
+ 	MOVV	$-1, R1
+diff --git a/src/runtime/internal/syscall/asm_linux_mipsx.s b/src/runtime/internal/syscall/asm_linux_mipsx.s
+index 050029eaa1399..561310f8a1c78 100644
+--- a/src/runtime/internal/syscall/asm_linux_mipsx.s
++++ b/src/runtime/internal/syscall/asm_linux_mipsx.s
+@@ -20,6 +20,7 @@ TEXT ·Syscall6(SB),NOSPLIT,$20-40
+ 	MOVW	a6+24(FP), R9
+ 	MOVW	R8, 16(R29)
+ 	MOVW	R9, 20(R29)
++	MOVW	R0, R3	// reset R3 to 0 as 1-ret SYSCALL keeps it
+ 	SYSCALL
+ 	BEQ	R7, ok
+ 	MOVW	$-1, R1
+diff --git a/src/syscall/asm_linux_mips64x.s b/src/syscall/asm_linux_mips64x.s
+index ceafeb6b013b1..6c7a6bc16fbf3 100644
+--- a/src/syscall/asm_linux_mips64x.s
++++ b/src/syscall/asm_linux_mips64x.s
+@@ -38,7 +38,8 @@ TEXT ·rawSyscallNoError(SB),NOSPLIT,$0-48
+ 	MOVV	R0, R8
+ 	MOVV	R0, R9
+ 	MOVV	trap+0(FP), R2	// syscall entry
++	MOVV	R0, R3	// reset R3 to zero as 1-ret SYSCALL keeps it
+ 	SYSCALL
+-	MOVV	R2, r1+32(FP)
+-	MOVV	R3, r2+40(FP)
++	MOVV	R2, r1+32(FP)	// r1
++	MOVV	R3, r2+40(FP)	// r2
+ 	RET
+diff --git a/src/syscall/asm_linux_mipsx.s b/src/syscall/asm_linux_mipsx.s
+index 3e5e8b1139779..99f0154d1bb4f 100644
+--- a/src/syscall/asm_linux_mipsx.s
++++ b/src/syscall/asm_linux_mipsx.s
+@@ -29,6 +29,7 @@ TEXT ·Syscall9(SB),NOSPLIT,$28-52
+ 	MOVW	R10, 24(R29)
+ 	MOVW	R11, 28(R29)
+ 	MOVW	trap+0(FP), R2	// syscall entry
++	MOVW	R0, R3	// reset R3 to zero as 1-ret SYSCALL keeps it
+ 	SYSCALL
+ 	BEQ	R7, ok9
+ 	MOVW	$-1, R1
+@@ -66,6 +67,7 @@ TEXT ·rawSyscallNoError(SB),NOSPLIT,$20-24
+ 	MOVW	a2+8(FP), R5
+ 	MOVW	a3+12(FP), R6
+ 	MOVW	trap+0(FP), R2	// syscall entry
++	MOVW	R0, R3	// reset R3 to zero as 1-ret SYSCALL keeps it
+ 	SYSCALL
+ 	MOVW	R2, r1+16(FP)	// r1
+ 	MOVW	R3, r2+20(FP)	// r2

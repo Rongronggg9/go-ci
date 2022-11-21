@@ -47,8 +47,7 @@ deb-src https://mirrors.bfsu.edu.cn/debian-security bullseye-security main contr
 //        stage('Patch golang') {
 //            steps {
 //                sh '''
-//                    curl -sL https://github.com/Rongronggg9/go/commit/1d162771ef2dfd297a50d2c3f2e0c6a720f9808e.patch \
-//                        | tee fix-mips-syscall.patch
+//                    cat fix-mips-syscall.patch
 //                    cd go && git apply -v ../fix-mips-syscall.patch
 //                '''
 //            }
